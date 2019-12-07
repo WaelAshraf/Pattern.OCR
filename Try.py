@@ -76,7 +76,7 @@ def find_nearest(array, value):
     return array[idx]
 
 #def CutPointIdentification(Line,Word,MTI): #Alg. 6
-def CutPointIdentification(Word,MTI): #Alg. 6
+def CutPointIdentification(Word,MTI): #Alg. 6 ACCORDING TO THE PSEUDO CODE
     Flag=0
     #LineImage=cv2.imread(Line)
     VP=getVerticalProjectionProfile(Word)
@@ -100,7 +100,7 @@ def CutPointIdentification(Word,MTI): #Alg. 6
     VPListNew = VPList[Beginindex:EndIndex]
     MFV = max(set(VPListNew), key = VPListNew.count) 
     OutputSeparationRegions= []
-    SRAppendFlag=False #initializa but do not append
+    SRAppendFlag=False #initialize but do not append
     while i < Word.shape[1] :
         if SRAppendFlag == False:
             SR = SeparationRegions()
@@ -108,8 +108,10 @@ def CutPointIdentification(Word,MTI): #Alg. 6
         if Word[MTI,i] == 1 and Word[MTI,i+1] == 0 and Flag == 0 : #CALCULATE END INDEX
             SR.EndIndex = i
             Flag = 1
-        elif Word[MTI,i-1] == 0 and Word[MTI,i] == 1 and Flag == 1 : #CALCULATE START AND CUT INDEX
-            SR.StartIndex = i
+        if i == (Word.shape[1]-1):
+            break
+        if Word[MTI,i] == 0 and Word[MTI,i+1] == 1 and Flag == 1 : #CALCULATE START AND CUT INDEX
+            SR.StartIndex = i+1
             MidIndex = ( SR.EndIndex + SR.StartIndex )/2
             MidIndex = int(MidIndex)
             IndexesEqualZero = np.where(VP == 0)
@@ -122,12 +124,12 @@ def CutPointIdentification(Word,MTI): #Alg. 6
             #IndexesCorrect = IndexesEqualZero[ mask ]
             #print(IndexesEqualZero [ (IndexesEqualZero < SR.StartIndex) & (IndexesEqualZero > SR.EndIndex)])
 
-            IndexesLessThanMFVAndEnd = np.where( (VP <= MFV) )#check end index
+            IndexesLessThanMFVAndEnd = np.where( (VP <= MFV) )
             IndexesLessThanMFVAndEnd = np.asarray(IndexesLessThanMFVAndEnd)
             IndexesLessThanMFVAndEnd=IndexesLessThanMFVAndEnd.tolist()
             IndexesLessThanMFVAndEnd = IndexesLessThanMFVAndEnd[0]
             IndexesLessThanMFVAndEnd = np.array(IndexesLessThanMFVAndEnd)
-            IndexesLessThanMFVAndEnd = IndexesLessThanMFVAndEnd [ IndexesLessThanMFVAndEnd > SR.EndIndex ]
+            IndexesLessThanMFVAndEnd = IndexesLessThanMFVAndEnd [ (IndexesLessThanMFVAndEnd > SR.EndIndex) & (IndexesLessThanMFVAndEnd < MidIndex)  ]
             #IndexesLessThanMFVAndEnd.append(2)
 
             IndexesLessThanMFVAndStartAndEnd = np.where( (VP <= MFV) )
@@ -145,7 +147,7 @@ def CutPointIdentification(Word,MTI): #Alg. 6
                 SR.CutIndex = MidIndex #line 19 on Alg.
             
             elif len(IndexesLessThanMFVAndEnd) != 0: 
-                SR.CutIndex = find_nearest(IndexesLessThanMFVAndEnd[1:] , MidIndex)
+                SR.CutIndex = find_nearest(IndexesLessThanMFVAndEnd , MidIndex)
             
             elif len(IndexesLessThanMFVAndStartAndEnd) != 0: #line 23
                 SR.CutIndex = find_nearest(IndexesLessThanMFVAndStartAndEnd[1:] , MidIndex)
@@ -160,7 +162,7 @@ def CutPointIdentification(Word,MTI): #Alg. 6
     return OutputSeparationRegions
 
 
-im = cv2.imread('images/15.png', cv2.IMREAD_GRAYSCALE)
+im = cv2.imread('images/30.png', cv2.IMREAD_GRAYSCALE)
 ret, thresh = cv2.threshold(im, 127, 255, cv2.THRESH_BINARY_INV)
 #cv2.imshow('str',thresh/255)   
 BaselineIndex = FindBaselineIndex(thresh)
