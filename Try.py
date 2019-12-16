@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-# from commonfunctions import *
+from commonfunctions import *
 from scipy.stats import iqr
 from scipy import stats
 # from collections import namedtupl
@@ -63,6 +63,9 @@ def getVerticalProjectionProfile(image):
     vertical_projection = np.sum(image, axis = 0) 
     return vertical_projection 
 
+def getHorizontalProjectionProfile(image):
+    horizontal_projection = np.sum(image, axis = 1) 
+    return horizontal_projection 
 
 @dataclass
 class SeparationRegions:
@@ -150,7 +153,7 @@ def CutPointIdentification(Word,MTI): #Alg. 6 ACCORDING TO THE PSEUDO CODE
                 SR.CutIndex = find_nearest(IndexesLessThanMFVAndEnd , MidIndex)
             
             elif len(IndexesLessThanMFVAndStartAndEnd) != 0: #line 23
-                SR.CutIndex = find_nearest(IndexesLessThanMFVAndStartAndEnd[1:] , MidIndex)
+                SR.CutIndex = find_nearest(IndexesLessThanMFVAndStartAndEnd , MidIndex)
             else:
                 SR.CutIndex = MidIndex
             
@@ -159,10 +162,188 @@ def CutPointIdentification(Word,MTI): #Alg. 6 ACCORDING TO THE PSEUDO CODE
                 SRAppendFlag = False
             Flag = 0
         i+=1
-    return OutputSeparationRegions
+    return OutputSeparationRegions,MFV
 
 
-im = cv2.imread('images/30.png', cv2.IMREAD_GRAYSCALE)
+def DetectHoles(Word, NextCut, CurrentCut, PreviousCut, MTI):#next is left, previous is right
+    LefPixelIndex = 0
+    for i in range(NextCut, PreviousCut, 1):
+        if Word[MTI, i] == 1:
+            LefPixelIndex = i
+            break
+    
+    RightPixelIndex = 0
+    for i in range(PreviousCut, NextCut, -1):
+        if Word[MTI, i] == 1:
+            RightPixelIndex = i
+            break
+    
+    UpPixelIndex = 0
+    for i in range(MTI, MTI - 10, -1):
+        if Word[i, CurrentCut] == 1:
+            UpPixelIndex = i
+            break
+    
+    DownPixelIndex = 0
+    for i in range(MTI, MTI + 10, 1):
+        if Word[i, CurrentCut+1] == 1: #+1 da psecial case 3ashan law 7arf el heh
+            DownPixelIndex = i
+            break
+    
+    if ( np.abs(LefPixelIndex - RightPixelIndex) <=8 ) and ( np.abs(UpPixelIndex - DownPixelIndex ) <=5 ):
+        return True
+    else:
+        return False
+    
+def DetectBaselineBetweenStartAndEnd(Word, BaseLineIndex, Start, End):#End is left
+    if np.sum( Word[BaseLineIndex,End:Start] ) == 0:
+        return True #no path found
+    return False
+
+def DistanceBetweenTwoPoints(x2,x1):
+    dist = np.abs(x2 - x1) 
+    return dist
+
+def CheckLine19Alg7(SRL,SR, NextCutIndex, VP, Word,MTI,BaseLineIndex):
+    LeftPixelCol = SR.EndIndex
+    TopPixelIndex = 0
+    for i in range(MTI,MTI-20,-1):
+        if Word[i-1,LeftPixelCol] == 0:
+            TopPixelIndex = i
+            break
+    Dist1 = DistanceBetweenTwoPoints( TopPixelIndex,BaseLineIndex )
+    Dist2 = DistanceBetweenTwoPoints( MTI,BaseLineIndex )
+    if ( SR==SRL[0] and VP[NextCutIndex] == 0) or ( Dist1 < (0.5*Dist2) ) :
+        return True
+    return False
+        
+def CheckStroke(Word, NextCut, CurrentCut, PreviousCut, MTI,BaseLineIndex,SR):
+    HPAbove = getHorizontalProjectionProfile( Word[0:BaseLineIndex,SR.EndIndex:SR.StartIndex] )
+    HPBelow = getHorizontalProjectionProfile( Word[BaseLineIndex: ,SR.EndIndex:SR.StartIndex] )
+            
+    SHPB = np.sum(HPBelow)
+    SHPA = np.sum(HPAbove)
+    
+    TopPixelIndex = 0
+    LeftPixelCol = SR.EndIndex
+    for i in range(MTI,MTI-20,-1):
+        if Word[i-1,LeftPixelCol] == 0:
+            TopPixelIndex = i
+            break
+            
+    Dist1 = DistanceBetweenTwoPoints( TopPixelIndex,BaseLineIndex )
+    Dist1 = int(Dist1)
+    print(Dist1)
+    #HP = getHorizontalProjectionProfile(Word)
+    HP = getHorizontalProjectionProfile(Word[:,SR.EndIndex:SR.StartIndex])
+    HPList = HP.tolist()
+    HPMode = max(set(HPList), key = HPList.count) 
+    HPList.sort()
+    SecondPeakValue = HPList[-2]
+    
+    VP=getVerticalProjectionProfile(Word)
+    VPList = VP.tolist()
+    MFV = max(set(VPList), key = VPList.count) 
+    
+    Holes = DetectHoles(Word, NextCut, CurrentCut, PreviousCut, MTI)
+    if SHPA > SHPB and not Holes:#and (HPMode == MFV) and Dist1 <= (2*SecondPeakValue):
+        return True
+    return False
+
+def CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex):
+    Dots = False
+    for i in range(MTI-2, MTI-6, -1):
+        for j in range(SR.EndIndex+2, SR.StartIndex):
+            if Word[i, j] == 1:
+                Dots = True
+                return Dots
+    for i in range(BaseLineIndex+2, BaseLineIndex+6, 1):
+        for j in range(SR.EndIndex+1, SR.StartIndex):
+            if Word[i, j] == 1:
+                Dots = True
+                return Dots
+    return Dots
+    
+
+def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
+    i=0
+    VP=getVerticalProjectionProfile(Word)
+    ValidSeparationRegions = []
+    while i < len(SRL):
+        SR = SRL[i]
+        StartEndPath = Word[BaseLineIndex, SR.EndIndex+1 :SR.StartIndex]
+        #print(not(1 in StartEndPath))
+        PrevIndex = i-1
+        NextIndex = i+1
+        
+        if VP[SR.CutIndex]==0:
+            ValidSeparationRegions.append(SR)
+            i+=1
+        #elif DetectHoles(Word, SRL[PrevIndex].CutIndex, SR.CutIndex, SRL[NextIndex].CutIndex, MTI):
+        elif DetectHoles(Word, SR.EndIndex, SR.CutIndex, SR.StartIndex, MTI):
+                i+=1
+        elif not(1 in StartEndPath):
+            ValidSeparationRegions.append(SR)
+            i+=1
+        elif DetectBaselineBetweenStartAndEnd(Word, BaseLineIndex, SR.StartIndex, SR.EndIndex):
+            HPAbove = getHorizontalProjectionProfile( Word[0:BaseLineIndex,SR.EndIndex:SR.StartIndex] )
+            HPBelow = getHorizontalProjectionProfile( Word[BaseLineIndex: ,SR.EndIndex:SR.StartIndex] )
+            
+            SHPB = np.sum(HPBelow)
+            SHPA = np.sum(HPAbove)
+            
+            if SHPB > SHPA :
+                i+=1
+            elif VP[ SR.CutIndex ] < MFV : #check sign later
+                ValidSeparationRegions.append(SR)
+                i+=1
+            else:
+                i+=1
+        elif NextIndex >= len(SRL):
+            if not DetectHoles(Word, SR.EndIndex, SR.CutIndex, SR.StartIndex, MTI):
+                ValidSeparationRegions.append(SR)
+            break
+        #next is line 19 in Alg.
+        elif CheckLine19Alg7(SRL,SR, SRL[i+1].CutIndex, VP, Word,MTI,BaseLineIndex):
+            i+=1
+        #line 22
+        elif not CheckStroke(Word, SRL[i+1].CutIndex, SR.CutIndex, SRL[i-1].CutIndex, MTI,BaseLineIndex,SR) :
+            DetectLine = DetectBaselineBetweenStartAndEnd(Word, BaseLineIndex, SRL[i+1].StartIndex, SRL[i+1].EndIndex)
+            if ~DetectLine and SRL[i+1].CutIndex <= MFV:
+                i+=1
+            else:
+                ValidSeparationRegions.append(SR)
+                i+=1 #line 27
+        elif CheckStroke(Word, SRL[i+1].CutIndex, SR.CutIndex, SRL[i-1].CutIndex, MTI,BaseLineIndex,SR) and CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex):#line 29
+            ValidSeparationRegions.append(SR)
+            i+=1 
+            i+=2#law kan 7arf seen fl nos masln
+        elif CheckStroke(Word, SRL[i+1].CutIndex, SR.CutIndex, SRL[i-1].CutIndex, MTI,BaseLineIndex,SR) and not  CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex) :#line 31
+            next1 = i+1
+            next2 = i+2
+            next3 = i+3
+            if next1 >= len(SRL) or next2 >= len(SRL) or next3 >= len(SRL):
+                ValidSeparationRegions.append(SR)
+                i+=1
+                continue
+            if CheckStroke(Word, SRL[i+2].CutIndex, SRL[i+1].CutIndex, SRL[i].CutIndex, MTI,BaseLineIndex,SRL[i+1]) and CheckDotsAboveOrBelow(Word, SRL[i+1], MTI,BaseLineIndex) :
+                ValidSeparationRegions.append(SR)
+                i+=3
+            else:
+                SEGNStroke    = CheckStroke(Word, SRL[i+2].CutIndex, SRL[i+1].CutIndex, SRL[i].CutIndex, MTI,BaseLineIndex,SRL[i+1]) 
+                SEGNDots      = CheckDotsAboveOrBelow(Word, SRL[i+1], MTI,BaseLineIndex)
+                SEGNNStroke   =  CheckStroke(Word, SRL[i+3].CutIndex, SRL[i+2].CutIndex, SRL[i+1].CutIndex, MTI,BaseLineIndex,SRL[i+2])
+                SEGNNDOTSDots = CheckDotsAboveOrBelow(Word, SRL[i+2], MTI,BaseLineIndex)
+                if SEGNStroke and SEGNNStroke and (SEGNNDOTSDots or SEGNDots): #di law true yeb2a seen aw sheen masln
+                    ValidSeparationRegions.append(SR)
+                    i+=3
+                else: #7arf noon masln
+                    ValidSeparationRegions.append(SR)
+                    i+=1
+    return ValidSeparationRegions 
+
+
+im = cv2.imread('images/70.png', cv2.IMREAD_GRAYSCALE)
 ret, thresh = cv2.threshold(im, 127, 255, cv2.THRESH_BINARY_INV)
 #cv2.imshow('str',thresh/255)   
 BaselineIndex = FindBaselineIndex(thresh)
@@ -171,17 +352,29 @@ print(BaselineIndex)
 #     for j in range(673):
 #         print(thresh[i,j])
 MaxTransitionIndex = FindingMaxTrans(thresh/255, BaselineIndex)
-print("max")
-print(MaxTransitionIndex)
+# print("max")
+# print(MaxTransitionIndex)
 
-SeparationRegions = CutPointIdentification(thresh/255, MaxTransitionIndex)
+SeparationRegions,MFV = CutPointIdentification(thresh/255, MaxTransitionIndex)
 print("Seeing Cut Point Identification")
-for SR in SeparationRegions:
-    cv2.line(thresh, (BaselineIndex, SR.StartIndex), (BaselineIndex, SR.StartIndex+1), (0, 20, 200), 10)
-    print(SR.StartIndex)
-    print(SR.EndIndex)
-    print(SR.CutIndex)
-    print("*********")
+# for SR in SeparationRegions:
+#     cv2.line(thresh, (BaselineIndex, SR.StartIndex), (BaselineIndex, SR.StartIndex+1), (0, 20, 200), 10)
+#     print(SR.StartIndex)
+#     print(SR.EndIndex)
+#     print(SR.CutIndex)
+#     print("*********")
 cv2.imshow('Window', thresh)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+
+ValidSeparationRegions = SeparationRegionFilteration(thresh/255, SeparationRegions, BaselineIndex, 
+                                                     MaxTransitionIndex, MFV)
+print(ValidSeparationRegions)
+
+for i in range (len(ValidSeparationRegions)):
+    thresh[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
+
+show_images([thresh])
+#2, 7, 10,11,12,13, 15, 17, 19,  21, 22, 23, 26, 28, 29, 30, 31 ok
+#14(one extra region fl ظ i ), 16(one error in لا i), 18(one extra region in ذ i)
+#24(one missing region between م and ف i), 25(one error in teh marbota)
