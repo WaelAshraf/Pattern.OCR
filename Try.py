@@ -6,6 +6,74 @@ from scipy import stats
 # from collections import namedtupl
 from dataclasses import dataclass
 
+def SegmentImg2Lines(image):
+    roi_list=[]
+    gray = rgb2gray(image)
+    
+    #ret, threshed_img = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+    #show_images([gray])
+    kernel = np.ones((8,40), np.uint8)
+    img_dilation = cv2.dilate(gray, kernel, iterations=1)
+    # find contours
+    #show_images([img_dilation])
+    ctrs, hier = cv2.findContours(img_dilation.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # sort contours
+    #sorted_ctrs = sorted(ctrs, key=lambda ctr: cv2.boundingRect(ctr)[0])
+    for i, ctr in enumerate(ctrs):
+        # Get bounding box
+        x, y, w, h = cv2.boundingRect(ctr)
+        # Getting ROI
+        roi = image[y:y + h, x:x + w]
+        #show_images([roi])
+        roi_list.append(roi)
+    roi_list.reverse()
+    return roi_list
+
+#https://www.pyimagesearch.com/2015/04/20/sorting-contours-using-python-and-opencv/
+def sort_contours(cnts, method="left-to-right"): #from right to left
+	# initialize the reverse flag and sort index
+	i = 0
+ 
+	# handle if we need to sort in reverse
+	#if method == "right-to-left" or method == "bottom-to-top":
+	reverse = True
+    
+	# construct the list of bounding boxes and sort them from top to
+	# bottom
+	boundingBoxes = [cv2.boundingRect(c) for c in cnts]
+	(cnts, boundingBoxes) = zip(*sorted(zip(cnts, boundingBoxes),
+		key=lambda b:b[1][i], reverse=reverse))
+ 
+	# return the list of sorted contours and bounding boxes
+	return cnts, boundingBoxes
+
+def Segmentline2word(line):
+    roi_list=[]
+    locs=[]
+    #gray = cv2.cvtColor(line, cv2.COLOR_BGR2GRAY)
+    #ret, threshed_img = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+    #show_images([threshed_img])
+    gray = rgb2gray(line)
+    kernel = np.ones((4,5), np.uint8)
+    img_dilation = cv2.dilate(gray, kernel, iterations=1)
+    #show_images([img_dilation])
+    # find contours
+    ctrs, hier = cv2.findContours(img_dilation.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # sort contours
+    #sorted_ctrs = sorted(ctrs, key=lambda ctr: cv2.boundingRect(ctr)[1])
+    sorted_ctrs,_ = sort_contours(ctrs)
+    for i, ctr in enumerate(sorted_ctrs):
+        # Get bounding box
+        x, y, w, h = cv2.boundingRect(ctr)
+        # Getting ROI
+        roi = line[y:y + h, x:x + w]
+        #show_images([roi])
+        locs.append((x, y, x + w,y + h))
+        roi_list.append(roi)
+
+    return roi_list,locs 
+
+
 def FindBaselineIndex(line): #Alg. 4
     HP = []
     PV = []
@@ -343,38 +411,49 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
     return ValidSeparationRegions 
 
 
-im = cv2.imread('images/70.png', cv2.IMREAD_GRAYSCALE)
+def main(thresh):
+    
+    #cv2.imshow('str',thresh/255)   
+
+    lines=SegmentImg2Lines(thresh)
+    
+    for line in lines:
+        words,_ = Segmentline2word(line)
+
+        for word in words:
+            BaselineIndex = FindBaselineIndex(word)
+            #print(BaselineIndex)
+            MaxTransitionIndex = FindingMaxTrans(word/255, BaselineIndex)
+            # print(MaxTransitionIndex)
+
+            SeparationRegions,MFV = CutPointIdentification(word/255, MaxTransitionIndex)
+            #print("Seeing Cut Point Identification")
+            # for SR in SeparationRegions:
+            #     cv2.line(thresh, (BaselineIndex, SR.StartIndex), (BaselineIndex, SR.StartIndex+1), (0, 20, 200), 10)
+            #     print(SR.StartIndex)
+            #     print(SR.EndIndex)
+            #     print(SR.CutIndex)
+            #     print("*********")
+
+            ValidSeparationRegions = SeparationRegionFilteration(word/255, SeparationRegions, BaselineIndex, 
+                                                                MaxTransitionIndex, MFV)
+            #print(ValidSeparationRegions)
+
+            # for i in range (len(ValidSeparationRegions)):
+            #     word[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
+
+            # show_images([word])
+
+
+im = cv2.imread('input.png', cv2.IMREAD_GRAYSCALE)
 ret, thresh = cv2.threshold(im, 127, 255, cv2.THRESH_BINARY_INV)
-#cv2.imshow('str',thresh/255)   
-BaselineIndex = FindBaselineIndex(thresh)
-print(BaselineIndex)
-# for i in range(25):
-#     for j in range(673):
-#         print(thresh[i,j])
-MaxTransitionIndex = FindingMaxTrans(thresh/255, BaselineIndex)
-# print("max")
-# print(MaxTransitionIndex)
+#show_images([thresh])
+main(thresh)
+print("y")
 
-SeparationRegions,MFV = CutPointIdentification(thresh/255, MaxTransitionIndex)
-print("Seeing Cut Point Identification")
-# for SR in SeparationRegions:
-#     cv2.line(thresh, (BaselineIndex, SR.StartIndex), (BaselineIndex, SR.StartIndex+1), (0, 20, 200), 10)
-#     print(SR.StartIndex)
-#     print(SR.EndIndex)
-#     print(SR.CutIndex)
-#     print("*********")
-cv2.imshow('Window', thresh)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
 
-ValidSeparationRegions = SeparationRegionFilteration(thresh/255, SeparationRegions, BaselineIndex, 
-                                                     MaxTransitionIndex, MFV)
-print(ValidSeparationRegions)
 
-for i in range (len(ValidSeparationRegions)):
-    thresh[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
 
-show_images([thresh])
 #2, 7, 10,11,12,13, 15, 17, 19,  21, 22, 23, 26, 28, 29, 30, 31 ok
 #14(one extra region fl ظ i ), 16(one error in لا i), 18(one extra region in ذ i)
 #24(one missing region between م and ف i), 25(one error in teh marbota)
