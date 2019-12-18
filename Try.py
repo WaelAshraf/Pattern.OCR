@@ -31,21 +31,21 @@ def SegmentImg2Lines(image):
 
 #https://www.pyimagesearch.com/2015/04/20/sorting-contours-using-python-and-opencv/
 def sort_contours(cnts, method="left-to-right"): #from right to left
-	# initialize the reverse flag and sort index
-	i = 0
- 
-	# handle if we need to sort in reverse
-	#if method == "right-to-left" or method == "bottom-to-top":
-	reverse = True
+    # initialize the reverse flag and sort index
+    i = 0
+
+    # handle if we need to sort in reverse
+    #if method == "right-to-left" or method == "bottom-to-top":
+    reverse = True
     
-	# construct the list of bounding boxes and sort them from top to
-	# bottom
-	boundingBoxes = [cv2.boundingRect(c) for c in cnts]
-	(cnts, boundingBoxes) = zip(*sorted(zip(cnts, boundingBoxes),
-		key=lambda b:b[1][i], reverse=reverse))
- 
-	# return the list of sorted contours and bounding boxes
-	return cnts, boundingBoxes
+    # construct the list of bounding boxes and sort them from top to
+    # bottom
+    boundingBoxes = [cv2.boundingRect(c) for c in cnts]
+    (cnts, boundingBoxes) = zip(*sorted(zip(cnts, boundingBoxes),
+    	key=lambda b:b[1][i], reverse=reverse))
+
+    # return the list of sorted contours and bounding boxes
+    return cnts, boundingBoxes
 
 def Segmentline2word(line):
     roi_list=[]
@@ -248,13 +248,13 @@ def DetectHoles(Word, NextCut, CurrentCut, PreviousCut, MTI):#next is left, prev
     
     UpPixelIndex = 0
     for i in range(MTI, MTI - 10, -1):
-        if Word[i, CurrentCut] == 1:
+        if i >= 0 and Word[i, CurrentCut] == 1:
             UpPixelIndex = i
             break
     
     DownPixelIndex = 0
     for i in range(MTI, MTI + 10, 1):
-        if Word[i, CurrentCut+1] == 1: #+1 da psecial case 3ashan law 7arf el heh
+        if i < Word.shape[0] and Word[i, CurrentCut+1] == 1: #+1 da psecial case 3ashan law 7arf el heh
             DownPixelIndex = i
             break
     
@@ -321,15 +321,17 @@ def CheckStroke(Word, NextCut, CurrentCut, PreviousCut, MTI,BaseLineIndex,SR):
 def CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex):
     Dots = False
     for i in range(MTI-2, MTI-6, -1):
-        for j in range(SR.EndIndex+2, SR.StartIndex):
-            if Word[i, j] == 1:
-                Dots = True
-                return Dots
+        if i >= 0:
+            for j in range(SR.EndIndex+2, SR.StartIndex):
+                if Word[i, j] == 1:
+                    Dots = True
+                    return Dots
     for i in range(BaseLineIndex+2, BaseLineIndex+6, 1):
-        for j in range(SR.EndIndex+1, SR.StartIndex):
-            if Word[i, j] == 1:
-                Dots = True
-                return Dots
+        if i < Word.shape[0]:
+            for j in range(SR.EndIndex+1, SR.StartIndex):
+                if Word[i, j] == 1:
+                    Dots = True
+                    return Dots
     return Dots
     
 
@@ -344,6 +346,16 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
         PrevIndex = i-1
         NextIndex = i+1
         
+        # if (i+3) < len(SRL) and (i+2) < len(SRL) and (i+1) < len(SRL) and i == 0:
+        #     SEGNStroke    = CheckStroke(Word, SR.StartIndex, SR.CutIndex, SR.EndIndex, MTI,BaseLineIndex,SRL[i+1]) 
+        #     SEGNDots      = CheckDotsAboveOrBelow(Word, SRL[i+1], MTI,BaseLineIndex)
+        #     SEGNNStroke   =  CheckStroke(Word, SRL[i+3].CutIndex, SRL[i+2].CutIndex, SRL[i+1].CutIndex, MTI,BaseLineIndex,SRL[i+2])
+        #     SEGNNDOTSDots = CheckDotsAboveOrBelow(Word, SRL[i+2], MTI,BaseLineIndex)
+        #     if SEGNStroke and SEGNNStroke and (SEGNNDOTSDots or SEGNDots): #di law true yeb2a seen aw sheen masln f awel el kalam mn 3l shemal
+        #         ValidSeparationRegions.append(SR)
+        #         i+=3
+        #         continue
+
         if VP[SR.CutIndex]==0:
             ValidSeparationRegions.append(SR)
             i+=1
@@ -385,12 +397,24 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
         elif CheckStroke(Word, SRL[i+1].CutIndex, SR.CutIndex, SRL[i-1].CutIndex, MTI,BaseLineIndex,SR) and CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex):#line 29
             ValidSeparationRegions.append(SR)
             i+=1 
-            i+=2#law kan 7arf seen fl nos masln
+            #i+=2#law kan 7arf seen fl nos masln
+        #law 7arf ط,ظ
+        elif np.abs(SR.EndIndex -SR.StartIndex) <= 3 :
+            i+=1
         elif CheckStroke(Word, SRL[i+1].CutIndex, SR.CutIndex, SRL[i-1].CutIndex, MTI,BaseLineIndex,SR) and not  CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex) :#line 31
             next1 = i+1
             next2 = i+2
             next3 = i+3
             if next1 >= len(SRL) or next2 >= len(SRL) or next3 >= len(SRL):
+                # if (i+2) == ( len(SRL) -1 ): #law 7arf seen awel el kelma masln
+                #     SEGNStroke    = CheckStroke(Word, SRL[i].CutIndex, SRL[i+1].CutIndex, SRL[i+2].CutIndex, MTI,BaseLineIndex,SRL[i+1]) 
+                #     SEGNDots      = CheckDotsAboveOrBelow(Word, SRL[i+1], MTI,BaseLineIndex)
+                #     #SEGNNStroke   =  CheckStroke(Word, SRL[i+3].CutIndex, SRL[i+2].CutIndex, SRL[i+1].CutIndex, MTI,BaseLineIndex,SRL[i+2])
+                #     #SEGNNDOTSDots = CheckDotsAboveOrBelow(Word, SRL[i+2], MTI,BaseLineIndex)
+                #     if SEGNStroke: #di law true yeb2a seen aw sheen masln
+                #         ValidSeparationRegions.append(SR)
+                #         i+=3
+                # else:
                 ValidSeparationRegions.append(SR)
                 i+=1
                 continue
@@ -419,8 +443,10 @@ def main(thresh):
     
     for line in lines:
         words,_ = Segmentline2word(line)
+        #words,_ = Segmentline2word(lines[2])
 
         for word in words:
+            #word = words[12]
             BaselineIndex = FindBaselineIndex(word)
             #print(BaselineIndex)
             MaxTransitionIndex = FindingMaxTrans(word/255, BaselineIndex)
@@ -435,17 +461,16 @@ def main(thresh):
             #     print(SR.CutIndex)
             #     print("*********")
 
-            ValidSeparationRegions = SeparationRegionFilteration(word/255, SeparationRegions, BaselineIndex, 
-                                                                MaxTransitionIndex, MFV)
+            ValidSeparationRegions = SeparationRegionFilteration(word/255, SeparationRegions, BaselineIndex, MaxTransitionIndex, MFV)
             #print(ValidSeparationRegions)
 
-            # for i in range (len(ValidSeparationRegions)):
-            #     word[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
+            for i in range (len(ValidSeparationRegions)):
+                word[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
 
-            # show_images([word])
+            show_images([word])
 
 
-im = cv2.imread('input.png', cv2.IMREAD_GRAYSCALE)
+im = cv2.imread('capr1.png', cv2.IMREAD_GRAYSCALE)
 ret, thresh = cv2.threshold(im, 127, 255, cv2.THRESH_BINARY_INV)
 #show_images([thresh])
 main(thresh)
