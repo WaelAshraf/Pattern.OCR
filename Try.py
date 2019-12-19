@@ -6,6 +6,13 @@ from scipy import stats
 # from collections import namedtupl
 from dataclasses import dataclass
 
+# install: pip install --upgrade arabic-reshaper
+import arabic_reshaper
+
+# install: pip install python-bidi or easy_install python-bidi
+from bidi.algorithm import get_display
+
+
 def SegmentImg2Lines(image):
     roi_list=[]
     gray = rgb2gray(image)
@@ -286,8 +293,8 @@ def CheckLine19Alg7(SRL,SR, NextCutIndex, VP, Word,MTI,BaseLineIndex):
     return False
         
 def CheckStroke(Word, NextCut, CurrentCut, PreviousCut, MTI,BaseLineIndex,SR):
-    HPAbove = getHorizontalProjectionProfile( Word[0:BaseLineIndex,SR.EndIndex:SR.StartIndex] )
-    HPBelow = getHorizontalProjectionProfile( Word[BaseLineIndex: ,SR.EndIndex:SR.StartIndex] )
+    HPAbove = getHorizontalProjectionProfile( Word[0:BaseLineIndex+1,SR.EndIndex:SR.StartIndex] )
+    HPBelow = getHorizontalProjectionProfile( Word[BaseLineIndex+1: ,SR.EndIndex:SR.StartIndex] )
             
     SHPB = np.sum(HPBelow)
     SHPA = np.sum(HPAbove)
@@ -295,13 +302,13 @@ def CheckStroke(Word, NextCut, CurrentCut, PreviousCut, MTI,BaseLineIndex,SR):
     TopPixelIndex = 0
     LeftPixelCol = SR.EndIndex
     for i in range(MTI,MTI-20,-1):
-        if Word[i-1,LeftPixelCol] == 0:
+        if i>= 1 and Word[i-1,LeftPixelCol] == 0:
             TopPixelIndex = i
             break
             
     Dist1 = DistanceBetweenTwoPoints( TopPixelIndex,BaseLineIndex )
     Dist1 = int(Dist1)
-    print(Dist1)
+    #print(Dist1)
     #HP = getHorizontalProjectionProfile(Word)
     HP = getHorizontalProjectionProfile(Word[:,SR.EndIndex:SR.StartIndex])
     HPList = HP.tolist()
@@ -328,12 +335,100 @@ def CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex):
                     return Dots
     for i in range(BaseLineIndex+2, BaseLineIndex+6, 1):
         if i < Word.shape[0]:
-            for j in range(SR.EndIndex+1, SR.StartIndex):
+            for j in range(SR.EndIndex+2, SR.StartIndex):
                 if Word[i, j] == 1:
                     Dots = True
                     return Dots
     return Dots
     
+def CheckLetterDal(MTI,Start,End,Word,CurrentCut,BaseLineIndex):#dal or zal y3ni 3ashan kan beygeeb fehom extra cut
+    UpPixelIndex=0
+    for i in range(MTI, MTI - 10, -1):
+        if i >= 0 and Word[i, CurrentCut+1] == 1:
+            UpPixelIndex = i
+            break
+
+    LefPixelIndex = 0
+    for i in range(CurrentCut, End-2, -1):
+        if Word[MTI -1, i] == 1:
+            LefPixelIndex = i
+            break
+    if ( (np.abs(UpPixelIndex - BaseLineIndex) <= 5) or (CurrentCut== (End+1) ) ) and np.abs(Start - End) == 4 and LefPixelIndex == 0 :
+        return True
+    return False
+
+def CheckLetterGeem(MTI,Start,End,Word,CurrentCut,BaseLineIndex):#geem aw 7aa2 aw 5aa2 3ashan beygeb fehom extra cut
+    DownPixelIndex = 0
+    for i in range(MTI, MTI + 10, 1):
+        if i < Word.shape[0] and Word[i, CurrentCut+1] == 1: #+1 da psecial case 3ashan law 7arf el heh
+            DownPixelIndex = i
+            break
+    if np.abs(Start - End) == 3 and (CurrentCut == (End+1) ) and DownPixelIndex==0:
+        return True #at middle
+    
+    # DownPixelIndex = 0
+    # for i in range(MTI, MTI + 3, 1):
+    #     if i < Word.shape[0] and Word[i, CurrentCut+1] == 1: #+1 da psecial case 3ashan law 7arf el heh
+    #         DownPixelIndex = i
+    #         break
+    # if ( Start - End <= 3 )
+    return False
+
+def CheckLetterLamAtEnd(MTI,StartIndex,EndIndex,Word,CutIndex,BaseLineIndex):
+    RightPixelIndex = 0
+    for i in range(CutIndex, StartIndex+2, 1):
+        if Word[BaseLineIndex, i] == 1:
+            RightPixelIndex = i
+            break
+    for i in range(BaseLineIndex,BaseLineIndex-8,-1):
+        if i>=0 and Word[i,RightPixelIndex] == 1:
+            continue
+        else:
+            return False
+    if np.abs(RightPixelIndex - CutIndex) <= 5:
+        return True
+    return False
+
+def CheckLetterYaa2AtEnd(MTI,StartIndex,EndIndex,Word,CutIndex,BaseLineIndex):
+    UpPixelIndex=0
+    for i in range(MTI, MTI - 10, -1):
+        if i >= 0 and Word[i, CutIndex] == 1:
+            UpPixelIndex = i
+            break
+
+    RightPixelIndex = 0
+    for i in range(CutIndex, CutIndex+4, 1):
+        if Word[BaseLineIndex, i] == 1:
+            RightPixelIndex = i
+            break
+
+    DownPixelIndex = 0
+    for i in range(MTI, MTI + 10, 1):
+        if i < Word.shape[0] and Word[i, CutIndex] == 1: #+1 da psecial case 3ashan law 7arf el heh
+            DownPixelIndex = i
+            break
+
+    if ( CutIndex - EndIndex <= 4 ) and UpPixelIndex == 0 and RightPixelIndex == 0 and DownPixelIndex != 0:
+        return True
+    return False
+
+def CheckLetterTah(MTI,StartIndex,EndIndex,Word,CutIndex,BaseLineIndex):
+    LefPixelIndex = 0
+    for i in range(CutIndex, EndIndex-2, -1):
+        if Word[MTI -1, i] == 1:
+            LefPixelIndex = i
+            break
+    
+    UpPixelIndex=0
+    for i in range(MTI, MTI - 10, -1):
+        if i >= 0 and Word[i, LefPixelIndex] == 0:
+            continue
+        else:
+            UpPixelIndex = i
+
+    if np.abs(EndIndex - StartIndex) <= 3 and (i >= 0 and UpPixelIndex <= 3):
+        return True
+    return False
 
 def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
     i=0
@@ -362,6 +457,12 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
         #elif DetectHoles(Word, SRL[PrevIndex].CutIndex, SR.CutIndex, SRL[NextIndex].CutIndex, MTI):
         elif DetectHoles(Word, SR.EndIndex, SR.CutIndex, SR.StartIndex, MTI):
                 i+=1
+        elif CheckLetterGeem(MTI,SR.StartIndex,SR.EndIndex,Word,SR.CutIndex,BaseLineIndex):#at middle
+                i+=1
+        elif i==0 and CheckLetterLamAtEnd(MTI,SR.StartIndex,SR.EndIndex,Word,SR.CutIndex,BaseLineIndex):
+            i+=1
+        elif i==0 and CheckLetterYaa2AtEnd(MTI,SR.StartIndex,SR.EndIndex,Word,SR.CutIndex,BaseLineIndex):
+            i+=1
         elif not(1 in StartEndPath):
             ValidSeparationRegions.append(SR)
             i+=1
@@ -379,6 +480,8 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
                 i+=1
             else:
                 i+=1
+        elif CheckLetterDal(MTI,SR.StartIndex,SR.EndIndex,Word,SR.CutIndex,BaseLineIndex):
+                i+=1
         elif NextIndex >= len(SRL):
             if not DetectHoles(Word, SR.EndIndex, SR.CutIndex, SR.StartIndex, MTI):
                 ValidSeparationRegions.append(SR)
@@ -391,6 +494,8 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
             DetectLine = DetectBaselineBetweenStartAndEnd(Word, BaseLineIndex, SRL[i+1].StartIndex, SRL[i+1].EndIndex)
             if ~DetectLine and SRL[i+1].CutIndex <= MFV:
                 i+=1
+            elif CheckLetterDal(MTI,SR.StartIndex,SR.EndIndex,Word,SR.CutIndex,BaseLineIndex):
+                i+=1
             else:
                 ValidSeparationRegions.append(SR)
                 i+=1 #line 27
@@ -399,7 +504,7 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
             i+=1 
             #i+=2#law kan 7arf seen fl nos masln
         #law 7arf ط,ظ
-        elif np.abs(SR.EndIndex -SR.StartIndex) <= 3 :
+        elif CheckLetterTah(MTI,SR.StartIndex,SR.EndIndex,Word,SR.CutIndex,BaseLineIndex):
             i+=1
         elif CheckStroke(Word, SRL[i+1].CutIndex, SR.CutIndex, SRL[i-1].CutIndex, MTI,BaseLineIndex,SR) and not  CheckDotsAboveOrBelow(Word, SR, MTI,BaseLineIndex) :#line 31
             next1 = i+1
@@ -426,7 +531,7 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
                 SEGNDots      = CheckDotsAboveOrBelow(Word, SRL[i+1], MTI,BaseLineIndex)
                 SEGNNStroke   =  CheckStroke(Word, SRL[i+3].CutIndex, SRL[i+2].CutIndex, SRL[i+1].CutIndex, MTI,BaseLineIndex,SRL[i+2])
                 SEGNNDOTSDots = CheckDotsAboveOrBelow(Word, SRL[i+2], MTI,BaseLineIndex)
-                if SEGNStroke and SEGNNStroke and (SEGNNDOTSDots or SEGNDots): #di law true yeb2a seen aw sheen masln
+                if SEGNStroke and SEGNNStroke: #and (SEGNNDOTSDots or SEGNDots): #di law true yeb2a seen aw sheen masln
                     ValidSeparationRegions.append(SR)
                     i+=3
                 else: #7arf noon masln
@@ -434,19 +539,85 @@ def SeparationRegionFilteration(Word, SRL, BaseLineIndex, MTI, MFV): #Alg. 7
                     i+=1
     return ValidSeparationRegions 
 
+def ConstructArabicDict():
+    ArabicDictionary = {}
+    ArabicDictionary['ا'] = 0
+    ArabicDictionary['ب'] = 1
+    ArabicDictionary['ت'] = 2
+    ArabicDictionary['ث'] = 3
+    ArabicDictionary['ج'] = 4
+    ArabicDictionary['ح'] = 5
+    ArabicDictionary['خ'] = 6
+    ArabicDictionary['د'] = 7
+    ArabicDictionary['ز'] = 8
+    ArabicDictionary['ر'] = 9
+    ArabicDictionary['ز'] = 10
+    ArabicDictionary['س'] = 11
+    ArabicDictionary['ش'] = 12
+    ArabicDictionary['ص'] = 13
+    ArabicDictionary['ض'] = 14
+    ArabicDictionary['ط'] = 15
+    ArabicDictionary['ظ'] = 16
+    ArabicDictionary['ع'] = 17
+    ArabicDictionary['غ'] = 18
+    ArabicDictionary['ف'] = 19
+    ArabicDictionary['ق'] = 20
+    ArabicDictionary['ك'] = 21
+    ArabicDictionary['ل'] = 22
+    ArabicDictionary['م'] = 23
+    ArabicDictionary['ن'] = 24
+    ArabicDictionary['ه'] = 25
+    ArabicDictionary['و'] = 26
+    ArabicDictionary['ي'] = 27
+    ArabicDictionary['لا'] = 28
+    return ArabicDictionary
+
+def CorrespondSegmentedImageToLabel( word, reshaped_text, ValidSeparationRegions, ArabicDict, TrainingSet ):
+
+    ValidSeparationRegions = ValidSeparationRegions.reverse() #3ashan ageb el kelma mn awelha mesh el 3aks
+
+    WordLabelList = []
+    for i in range(len(ValidSeparationRegions)):
+        letter = 0
+        if i == 0:
+            letter = word[:, ValidSeparationRegions[i].CutIndex: ]
+        elif i == ( (len(ValidSeparationRegions)) - 1 ):
+            letter = word[:, :ValidSeparationRegions[i].CutIndex ]
+        else: #in middle (normal)
+            letter = word[:, ValidSeparationRegions[i].CutIndex : ValidSeparationRegions[i-1].CutIndex ]
+
+        #compare letter and get its label from dictionary #NOT COMPLETED
+        label=0
+        #MINAAAAAAAA 
+
+        # res = dict((k, ArabicDict[k]) for k in ['nikhil', 'akshat'] 
+        #                                 if k in ArabicDict)
+        
+        TrainingSet[letter] = label
+
 
 def main(thresh):
     
     #cv2.imshow('str',thresh/255)   
+    ArabicDict = ConstructArabicDict()
+
+    File = open("capr1.txt", "r", encoding='utf-8')
+    #print(u File.readline())
+
+    reshaped_text = arabic_reshaper.reshape(File.readline())    # correct its shape
+    reshaped_text = reshaped_text.split()
+    #bidi_text = get_display(reshaped_text[-1])           # correct its direction if i want to display it
 
     lines=SegmentImg2Lines(thresh)
     
+    WordCounter = 0
+    TrainingSet = {} #dictionary to contain the letters of dataset to be trained along with their labels
     for line in lines:
         words,_ = Segmentline2word(line)
-        #words,_ = Segmentline2word(lines[2])
+        #words,_ = Segmentline2word(lines[1])
 
         for word in words:
-            #word = words[12]
+            #word = words[6]
             BaselineIndex = FindBaselineIndex(word)
             #print(BaselineIndex)
             MaxTransitionIndex = FindingMaxTrans(word/255, BaselineIndex)
@@ -462,21 +633,37 @@ def main(thresh):
             #     print("*********")
 
             ValidSeparationRegions = SeparationRegionFilteration(word/255, SeparationRegions, BaselineIndex, MaxTransitionIndex, MFV)
-            #print(ValidSeparationRegions)
 
-            for i in range (len(ValidSeparationRegions)):
-                word[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
+            # word1=word.copy()
+            # for i in range (len(ValidSeparationRegions)):
+            #     word1[MaxTransitionIndex,int(ValidSeparationRegions[i].CutIndex)] = 150
 
-            show_images([word])
+            # show_images([word1])
+            # ValidSeparationRegions = SeparationRegionFilteration(word/255, SeparationRegions, BaselineIndex, MaxTransitionIndex, MFV)
+
+            if ( len(ValidSeparationRegions) + 1 ) == len( reshaped_text[WordCounter] ):
+                #label characters and append it to training set
+                CorrespondSegmentedImageToLabel( word, reshaped_text[WordCounter], ValidSeparationRegions, ArabicDict, TrainingSet )
+
+            WordCounter+=1
+
+
 
 
 im = cv2.imread('capr1.png', cv2.IMREAD_GRAYSCALE)
+#im = cv2.imread('2.png', cv2.IMREAD_GRAYSCALE)
 ret, thresh = cv2.threshold(im, 127, 255, cv2.THRESH_BINARY_INV)
 #show_images([thresh])
 main(thresh)
+
+
+
+
 print("y")
 
-
+#some of the left :((
+#seen, sheen, geem in barameg, noon fl akher, ya2 fl akher
+#feh fl akher
 
 
 #2, 7, 10,11,12,13, 15, 17, 19,  21, 22, 23, 26, 28, 29, 30, 31 ok
